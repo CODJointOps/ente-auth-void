@@ -1,0 +1,71 @@
+name: Auto Update Ente Auth Template
+
+on:
+  schedule:
+    - cron: '0 12 * * *'
+  workflow_dispatch:
+
+jobs:
+  update-template:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: sudo apt-get update && sudo apt-get install -y curl jq
+
+      - name: Fetch Latest Release
+        id: get_release
+        run: |
+          RELEASES=$(curl -s https://api.github.com/repos/ente-io/ente/releases?per_page=50)
+          TAG=$(echo "$RELEASES" | jq -r '[.[] | select(.prerelease == false) | select(.tag_name | startswith("auth-v"))] | sort_by(.published_at) | reverse | .[0].tag_name')
+          if [[ -z "$TAG" || "$TAG" == "null" ]]; then
+            echo "No release found"
+            exit 0
+          fi
+          VERSION="${TAG#auth-v}"
+
+          DEB_URL=$(echo "$RELEASES" | jq -r "[.[] | select(.tag_name == \"$TAG\")] | .[0].assets[] | select(.name | endswith(\"x86_64.deb\")) | .browser_download_url")
+
+          if [[ -z "$DEB_URL" || "$DEB_URL" == "null" ]]; then
+            echo "No x86_64 deb found"
+            exit 0
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "deb_url=$DEB_URL" >> $GITHUB_OUTPUT
+
+      - name: Read Current Version
+        if: steps.get_release.outputs.version
+        id: check_version
+        run: |
+          CURRENT_VERSION=$(grep '^version=' template | cut -d= -f2 | sed 's/^[ \t]*//;s/[ \t]*$//')
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Download and Checksum
+        if: steps.get_release.outputs.version && steps.get_release.outputs.version != steps.check_version.outputs.current_version
+        id: download
+        run: |
+          curl -Lo ente-auth.deb "${{ steps.get_release.outputs.deb_url }}"
+          SHA256=$(sha256sum ente-auth.deb | awk '{print $1}')
+          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+
+      - name: Update Template
+        if: steps.get_release.outputs.version && steps.get_release.outputs.version != steps.check_version.outputs.current_version
+        run: |
+          sed -i "s/^version=.*/version=${{ steps.get_release.outputs.version }}/" template
+          sed -i "s/^checksum=.*/checksum=${{ steps.download.outputs.sha256 }}/" template
+
+      - name: Commit and Push
+        if: steps.get_release.outputs.version && steps.get_release.outputs.version != steps.check_version.outputs.current_version
+        run: |
+          git config user.name "Wizzard"
+          git config user.email "rich@bandaholics.cash"
+          git add template
+          if ! git diff --cached --quiet; then
+            git commit -m "ente-auth: update to v${{ steps.get_release.outputs.version }} [auto]"
+            git pull --rebase origin master
+            git push
+          fi
