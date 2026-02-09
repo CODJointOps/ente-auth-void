@@ -27,7 +27,7 @@ do_install() {
 
 	# Symlink binary
 	vmkdir usr/bin
-	ln -sf /opt/ente-auth/enteauth ${DESTDIR}/usr/bin/ente-auth
+	ln -sf /opt/ente-auth/enteauth ${DESTDIR}/usr/bin/enteauth
 
 	# Desktop file
 	vinstall usr/share/applications/enteauth.desktop 0644 usr/share/applications
