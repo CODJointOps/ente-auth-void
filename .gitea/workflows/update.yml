@@ -30,7 +30,7 @@ jobs:
           TAG=$(echo "$RELEASES" | jq -r '[.[] | select(.draft == false and .prerelease == false) | select(.tag_name | startswith("auth-v"))] | sort_by((.tag_name | sub("^[^0-9]*";"") | split("-") | .[0] | [scan("[0-9]+")] | map(tonumber)), (.tag_name | sub("^[^0-9]*";"") | split("-") | .[1:] | join(".") | [scan("[0-9]+")] | map(tonumber)), .published_at) | last | .tag_name')
           if [[ -z "$TAG" || "$TAG" == "null" ]]; then
             echo "No release found"
-            exit 0
+            exit 1
           fi
           VERSION="${TAG#auth-v}"
 
@@ -38,7 +38,7 @@ jobs:
 
           if [[ -z "$DEB_URL" || "$DEB_URL" == "null" ]]; then
             echo "No x86_64 deb found"
-            exit 0
+            exit 1
           fi
 
           echo "version=$VERSION" >> $GITHUB_OUTPUT
